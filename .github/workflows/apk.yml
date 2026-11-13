@@ -1,0 +1,33 @@
+name: Make SBG iOS APK
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Compile and Package APK
+        run: |
+          SDK_DIR=$ANDROID_HOME
+          BUILD_TOOLS=$(ls -d $SDK_DIR/build-tools/* | tail -n 1)
+          PLATFORM=$(ls -d $SDK_DIR/platforms/* | tail -n 1)
+          mkdir -p build/gen build/obj build/apk
+          $BUILD_TOOLS/aapt package -f -m -J build/gen -M app/src/main/AndroidManifest.xml -I $PLATFORM/android.jar
+          javac -d build/obj -classpath $PLATFORM/android.jar -sourcepath app/src/main/java:build/gen app/src/main/java/com/vinay/sbgios/MainActivity.java
+          $BUILD_TOOLS/d8 --output build/apk build/obj/com/vinay/sbgios/*.class
+          $BUILD_TOOLS/aapt package -f -M app/src/main/AndroidManifest.xml -I $PLATFORM/android.jar -F build/unsigned.apk build/apk
+          $BUILD_TOOLS/zipalign -f 4 build/unsigned.apk build/aligned.apk
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --out sbg_ios.apk build/aligned.apk
+      - name: Upload SBG iOS APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbg_ios_apk
+          path: sbg_ios.apk
