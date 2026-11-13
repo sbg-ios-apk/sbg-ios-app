@@ -1,0 +1,165 @@
+package com.vinay.sbgios;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.view.Gravity;
+import android.view.View;
+import android.view.animation.Animation;
+import android.view.animation.ScaleAnimation;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import java.util.ArrayList;
+import java.util.Locale;
+
+public class MainActivity extends Activity {
+    private TextToSpeech tts;
+    private SpeechRecognizer speechRecognizer;
+    private View glowingOrb;
+    private TextView logoText;
+    private SharedPreferences prefs;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences("SBG_DATA", MODE_PRIVATE);
+
+        if (!Settings.canDrawOverlays(this)) {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivityForResult(intent, 101);
+        }
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setGravity(Gravity.CENTER);
+        layout.setBackgroundColor(0xFF05050A);
+        layout.setPadding(50, 50, 50, 50);
+
+        // Siri-Style गोलाकार चमकदार लोगो
+        glowingOrb = new View(this);
+        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(280, 280);
+        glowingOrb.setLayoutParams(orbParams);
+        glowingOrb.setBackgroundColor(0xFF00F2FE);
+        layout.addView(glowingOrb);
+
+        logoText = new TextView(this);
+        logoText.setText("sbg ios");
+        logoText.setTextColor(0xFFFFFFFF);
+        logoText.setTextSize(32);
+        logoText.setGravity(Gravity.CENTER);
+        logoText.setPadding(0, 40, 0, 40);
+        layout.addView(logoText);
+
+        String savedName = prefs.getString("user_name", "");
+        if (savedName.isEmpty()) {
+            EditText nameInput = new EditText(this);
+            nameInput.setHint("Apna Naam Likhein");
+            nameInput.setTextColor(0xFFFFFFFF);
+            nameInput.setHintTextColor(0xFF888888);
+            layout.addView(nameInput);
+
+            EditText wakeInput = new EditText(this);
+            wakeInput.setHint("Activation Naam (jaise hay sbg)");
+            wakeInput.setTextColor(0xFFFFFFFF);
+            wakeInput.setHintTextColor(0xFF888888);
+            layout.addView(wakeInput);
+
+            Button saveBtn = new Button(this);
+            saveBtn.setText("Save & Start sbg ios");
+            saveBtn.setOnClickListener(v -> {
+                prefs.edit()
+                    .putString("user_name", nameInput.getText().toString())
+                    .putString("wake_word", wakeInput.getText().toString().toLowerCase())
+                    .apply();
+                recreate();
+            });
+            layout.addView(saveBtn);
+        } else {
+            Button micBtn = new Button(this);
+            micBtn.setText("Activate " + prefs.getString("wake_word", "hay sbg"));
+            micBtn.setOnClickListener(v -> startListening());
+            layout.addView(micBtn);
+        }
+
+        setContentView(layout);
+
+        // डीप और साफ आवाज़ (Suora जैसी भारी पिच)
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                tts.setLanguage(new Locale("hi", "IN"));
+                tts.setPitch(0.65f);
+                tts.setSpeechRate(0.85f);
+                if (!savedName.isEmpty()) {
+                    speak("Hello " + savedName + ", main sbg ios hu.");
+                    startAnimation();
+                }
+            }
+        });
+    }
+
+    private void startAnimation() {
+        ScaleAnimation pulse = new ScaleAnimation(0.9f, 1.2f, 0.9f, 1.2f,
+                Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
+        pulse.setDuration(1000);
+        pulse.setRepeatCount(Animation.INFINITE);
+        pulse.setRepeatMode(Animation.REVERSE);
+        glowingOrb.startAnimation(pulse);
+    }
+
+    private void speak(String text) {
+        if (tts != null) {
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null);
+        }
+    }
+
+    private void startListening() {
+        startAnimation();
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN");
+
+        speechRecognizer.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) { speak("Ji boliye?"); }
+            @Override public void onResults(Bundle results) {
+                ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (matches != null && !matches.isEmpty()) {
+                    handleCommand(matches.get(0).toLowerCase());
+                }
+            }
+            @Override public void onBeginningOfSpeech() {}
+            @Override public void onRmsChanged(float rmsdB) {}
+            @Override public void onBufferReceived(byte[] buffer) {}
+            @Override public void onEndOfSpeech() {}
+            @Override public void onError(int error) {}
+            @Override public void onPartialResults(Bundle partialResults) {}
+            @Override public void onEvent(int eventType, Bundle params) {}
+        });
+        speechRecognizer.startListening(intent);
+    }
+
+    private void handleCommand(String cmd) {
+        if (cmd.contains("youtube")) {
+            speak("YouTube khol raha hu");
+            startActivity(getPackageManager().getLaunchIntentForPackage("com.google.android.youtube"));
+        } else if (cmd.contains("whatsapp")) {
+            speak("WhatsApp khol raha hu");
+            startActivity(getPackageManager().getLaunchIntentForPackage("com.whatsapp"));
+        } else if (cmd.contains("delete") || cmd.contains("uninstall")) {
+            speak("App delete karne ke liye settings khol raha hu");
+            startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:com.instagram.android")));
+        } else {
+            speak("Aapne kaha " + cmd);
+        }
+    }
+}
